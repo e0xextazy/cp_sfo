@@ -20,6 +20,12 @@ form_router = Router()
 dp.include_router(form_router)
 
 
+async def on_startup(dp):
+    asyncio.create_task(weekly_survey())  # Создание задачи внутри асинхронной функции
+    asyncio.create_task(birthday_greetings())
+    asyncio.create_task(check_document_updates())
+
+
 class UserState(StatesGroup):
     main_menu = State()
     faq_menu = State()
@@ -70,6 +76,7 @@ async def handle_poll_answer(poll_answer: PollAnswer):
 
 
 # обновления документов
+# не запускается без бэка
 async def check_document_updates():
     while True:
         # Проверьте наличие обновлений в документах (например, в базе данных или внешнем сервисе)
@@ -79,9 +86,6 @@ async def check_document_updates():
             for user_id in get_subscribed_users():
                 await bot.send_message(user_id, message_text)
         await asyncio.sleep(3600 * 8)  # Проверяйте обновления каждый день
-
-
-asyncio.create_task(check_document_updates())
 
 
 # Поиск коллег
@@ -97,13 +101,8 @@ async def weekly_survey():
         # Ожидайте начала новой недели
         await asyncio.sleep(time_until_next_week())
         poll_options = ["Легко", "Нормально", "Очень тяжело"]
-        for (
-            user_id
-        ) in get_all_users():  # функция, которая возвращает список всех пользователей
+        for user_id in get_all_users():
             await bot.send_poll(user_id, "Как прошла неделя?", poll_options)
-
-
-asyncio.create_task(weekly_survey())
 
 
 async def birthday_greetings():
@@ -115,9 +114,6 @@ async def birthday_greetings():
             for user_id in get_all_users():
                 await bot.send_message(user_id, message_text)
         await asyncio.sleep(86400)  # Проверяйте дни рождения каждый день
-
-
-asyncio.create_task(birthday_greetings())
 
 
 @dp.message(Command("start"))
@@ -220,9 +216,11 @@ async def process_resolved(callback_query: types.CallbackQuery):
 
 
 async def main() -> None:
+    await on_startup(dp)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+
     asyncio.run(main())
