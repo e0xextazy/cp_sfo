@@ -3,6 +3,8 @@ import logging
 import os
 import sys
 
+import httpx
+import requests
 from aiogram import Bot, Dispatcher, F, Router, types
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
@@ -19,14 +21,27 @@ from aiogram.types import (
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 load_dotenv(".env")
 
 bot = Bot(token=str(os.getenv("BOT_TOKEN")))
+BD_API = str(os.getenv("BD_API"))
 dp = Dispatcher()
 form_router = Router()
 dp.include_router(form_router)
 N_TRIES = 2
 import os
+
+
+async def save_message_database(chat_id, type, text):
+    data = {"chat_id": chat_id, "message": {"type": type, "text": text}}
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(BD_API, json=data)
+        if response.status_code == 200:
+            logger.info("Message saved successfully")
+        else:
+            logger.error(f"Failed to save message: {response.text}")
 
 
 def load_faq(directory="faq_answers"):
@@ -44,7 +59,6 @@ FAQ_ANSWERS = load_faq()
 
 async def on_startup(dp):
     asyncio.create_task(weekly_survey())  # Создание задачи внутри асинхронной функции
-    asyncio.create_task(birthday_greetings())
     asyncio.create_task(check_document_updates())
 
 
@@ -68,7 +82,9 @@ def get_main_menu_markup():
     return markup
 
 
-def get_answer(question):
+### здесь модель работает
+### chat id для поиска истории запросов через DB API (можно просто сделать вид)
+def get_answer(chat_id, question):
     return """
 Выделяются следующие виды встреч:
 
@@ -81,28 +97,12 @@ def get_answer(question):
 """
 
 
-def get_document_updates():
-    return False  # заглушка, нужен бэкенд
-
-
-def get_subscribed_users():
-    return []
-
-
-def get_all_users():
-    return []
-
-
 def get_contact_info(query):
     return "Почта: ivan_ivanov@smart.ru"
 
 
 def time_until_next_week():
     return 3600 * 7
-
-
-def get_today_birthdays():
-    return []
 
 
 # Предположим, что у вас есть функция save_poll_answer для сохранения ответов на опросы в базе данных
@@ -121,18 +121,16 @@ async def handle_poll_answer(poll_answer: PollAnswer):
     # Сохраните результаты опроса
     save_poll_answer(user_id, poll_id, option_ids)
 
-    # await bot.send_message(user_id, "Ваш ответ на опрос сохранен.")
-
 
 # обновления документов
 # не запускается без бэка
 async def check_document_updates():
     while True:
         # Проверьте наличие обновлений в документах (например, в базе данных или внешнем сервисе)
-        updates = get_document_updates()
+        updates = False
         if updates:
             message_text = f"Обновлены следующие документы:\n{updates}"
-            for user_id in get_subscribed_users():
+            for user_id in []:
                 await bot.send_message(user_id, message_text)
         await asyncio.sleep(3600 * 8)  # Проверяйте обновления каждый день
 
@@ -174,19 +172,8 @@ async def weekly_survey():
         # Ожидайте начала новой недели
         await asyncio.sleep(time_until_next_week())
         poll_options = ["Легко", "Нормально", "Очень тяжело"]
-        for user_id in get_all_users():
+        for user_id in []:
             await bot.send_poll(user_id, "Как прошла неделя?", poll_options)
-
-
-async def birthday_greetings():
-    while True:
-        # Проверьте, есть ли сегодня у кого-то день рождения
-        birthdays = get_today_birthdays()
-        for birthday_person in birthdays:
-            message_text = f"С днем рождения, {birthday_person['name']}! 🎂"
-            for user_id in get_all_users():
-                await bot.send_message(user_id, message_text)
-        await asyncio.sleep(86400)  # Проверяйте дни рождения каждый день
 
 
 @dp.message(Command("start"))
@@ -275,46 +262,43 @@ async def show_faq_menu(callback_query: types.CallbackQuery):
     )
 
 
-# пример обработки кнопки
+async def answer_faq(callback_query: types.CallbackQuery, state: FSMContext, type: str):
+    await bot.answer_callback_query(callback_query.id)
+    await state.update_data(message_count=0)
+    await state.set_state(UserState.message_count)
+    await bot.delete_message(
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+    )
+    await bot.send_message(
+        callback_query.from_user.id, FAQ_ANSWERS.get(type, "FAQ пуст")
+    )
+    await bot.send_message(
+        callback_query.from_user.id,
+        "Главное меню:",
+        reply_markup=get_main_menu_markup(),
+    )
+
+
 @dp.callback_query(lambda c: c.data and c.data.startswith("faq_salary"))
 async def process_callback_salary(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
-    await bot.answer_callback_query(callback_query.id)
-    await state.update_data(message_count=0)
-    await state.set_state(UserState.message_count)
-    await bot.delete_message(
-        chat_id=callback_query.from_user.id,
-        message_id=callback_query.message.message_id,
-    )
-    await bot.send_message(callback_query.from_user.id, f"топ 5 вопросов-ответов")
-    await bot.send_message(
-        callback_query.from_user.id,
-        "Главное меню:",
-        reply_markup=get_main_menu_markup(),
-    )
+    await answer_faq(callback_query, state, "salary")
 
 
-# пример обработки кнопки
 @dp.callback_query(lambda c: c.data and c.data.startswith("faq_vacation"))
 async def process_callback_salary(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
-    await bot.answer_callback_query(callback_query.id)
-    await state.update_data(message_count=0)
-    await state.set_state(UserState.message_count)
-    await bot.delete_message(
-        chat_id=callback_query.from_user.id,
-        message_id=callback_query.message.message_id,
-    )
-    await bot.send_message(
-        callback_query.from_user.id, FAQ_ANSWERS.get("vacation", "FAQ пуст")
-    )
-    await bot.send_message(
-        callback_query.from_user.id,
-        "Главное меню:",
-        reply_markup=get_main_menu_markup(),
-    )
+    await answer_faq(callback_query, state, "vacation")
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("faq_sick_leave"))
+async def process_callback_salary(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
+    await answer_faq(callback_query, state, "sick_leave")
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("ask"))
@@ -332,8 +316,13 @@ async def process_message(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     message_count = user_data.get("message_count", 0) + 1
     await state.update_data({"message_count": message_count})
+
+    chat_id = message.chat.id
     question = message.text
-    answer = get_answer(question)
+    await save_message_database(chat_id, "q", question)
+    answer = get_answer(chat_id, question)
+    await save_message_database(chat_id, "a", answer)
+
     if message_count == N_TRIES:
         item1 = InlineKeyboardButton(
             text="Да, вернуться в меню", callback_data="back_to_main"
