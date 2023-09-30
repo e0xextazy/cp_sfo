@@ -21,16 +21,139 @@ dp.include_router(form_router)
 
 
 class UserState(StatesGroup):
-    message_count = State()  # state for counting messages
+    main_menu = State()
+    faq_menu = State()
+    message_count = State()
+
+
+def get_document_updates():
+    return False  # заглушка, нужен бэкенд
+
+
+def get_subscribed_users():
+    return []
+
+
+def get_all_users():
+    return []
+
+
+def get_contact_info(query):
+    return ""
+
+
+def time_until_next_week():
+    return 3600 * 7
+
+
+def get_today_birthdays():
+    return []
+
+
+# обновления документов
+async def check_document_updates():
+    while True:
+        # Проверьте наличие обновлений в документах (например, в базе данных или внешнем сервисе)
+        updates = get_document_updates()
+        if updates:
+            message_text = f"Обновлены следующие документы:\n{updates}"
+            for user_id in get_subscribed_users():
+                await bot.send_message(user_id, message_text)
+        await asyncio.sleep(3600 * 8)  # Проверяйте обновления каждый день
+
+
+asyncio.create_task(check_document_updates())
+
+
+# Поиск коллег
+@dp.message(Command("search"))
+async def search_colleague(message: types.Message):
+    query = message.get_args()
+    contact_info = get_contact_info(query)
+    await message.reply(contact_info)
+
+
+async def weekly_survey():
+    while True:
+        # Ожидайте начала новой недели
+        await asyncio.sleep(time_until_next_week())
+        poll_options = ["Легко", "Нормально", "Очень тяжело"]
+        for (
+            user_id
+        ) in get_all_users():  # функция, которая возвращает список всех пользователей
+            await bot.send_poll(user_id, "Как прошла неделя?", poll_options)
+
+
+asyncio.create_task(weekly_survey())
+
+
+async def birthday_greetings():
+    while True:
+        # Проверьте, есть ли сегодня у кого-то день рождения
+        birthdays = get_today_birthdays()
+        for birthday_person in birthdays:
+            message_text = f"С днем рождения, {birthday_person['name']}! 🎂"
+            for user_id in get_all_users():
+                await bot.send_message(user_id, message_text)
+        await asyncio.sleep(86400)  # Проверяйте дни рождения каждый день
+
+
+asyncio.create_task(birthday_greetings())
 
 
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
+    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
+    item2 = InlineKeyboardButton(
+        text="Задать вопрос AI-ассистенту", callback_data="ask"
+    )
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2]])
+    await message.answer("Главное меню:", reply_markup=markup)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("back_to_main"))
+async def back_to_main(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
+    item2 = InlineKeyboardButton(
+        text="Задать вопрос AI-ассистенту", callback_data="ask"
+    )
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2]])
+    await bot.edit_message_text(
+        "Главное меню:",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=markup,
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("faq"))
+async def show_faq_menu(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
     item1 = InlineKeyboardButton(text="Отпуск", callback_data="vacation")
     item2 = InlineKeyboardButton(text="Больничный", callback_data="sick_leave")
-    item3 = InlineKeyboardButton(text="Задать вопрос", callback_data="ask_question")
-    markup = InlineKeyboardMarkup(inline_keyboard=[[item1, item2, item3]])
-    await message.answer("Выберите опцию:", reply_markup=markup)
+    item3 = InlineKeyboardButton(text="ЗП", callback_data="salary")
+    item_back = InlineKeyboardButton(text="Назад", callback_data="back_to_main")
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item_back, item1], [item2, item3]])
+    await bot.edit_message_text(
+        "Выберите интересующую тему:",
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=markup,
+    )
+
+
+# пример обработки кнопки
+@dp.callback_query(lambda c: c.data and c.data.startswith("salary"))
+async def process_callback_salary(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
+    await bot.answer_callback_query(callback_query.id)
+    await state.update_data(message_count=0)
+    await state.set_state(UserState.message_count)
+    await bot.send_message(callback_query.from_user.id, f"топ 5 вопросов-ответов")
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("ask"))
