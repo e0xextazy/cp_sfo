@@ -8,7 +8,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, PollAnswer
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
@@ -48,6 +48,25 @@ def time_until_next_week():
 
 def get_today_birthdays():
     return []
+
+
+# Предположим, что у вас есть функция save_poll_answer для сохранения ответов на опросы в базе данных
+def save_poll_answer(user_id: int, poll_id: str, option_ids: list):
+    # Сохраните ответ на опрос в базе данных
+    pass
+
+
+@dp.poll_answer()
+async def handle_poll_answer(poll_answer: PollAnswer):
+    user_id = poll_answer.user.id
+    poll_id = poll_answer.poll_id
+    # это список индексов выбранных вариантов ответа
+    option_ids = poll_answer.option_ids
+
+    # Сохраните результаты опроса
+    save_poll_answer(user_id, poll_id, option_ids)
+
+    # await bot.send_message(user_id, "Ваш ответ на опрос сохранен.")
 
 
 # обновления документов
