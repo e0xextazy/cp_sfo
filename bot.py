@@ -18,6 +18,7 @@ bot = Bot(token=str(os.getenv("BOT_TOKEN")))
 dp = Dispatcher()
 form_router = Router()
 dp.include_router(form_router)
+N_TRIES = 2
 
 
 async def on_startup(dp):
@@ -118,28 +119,49 @@ async def birthday_greetings():
 
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
+    welcome_text = "Главное меню: "
     item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
     item2 = InlineKeyboardButton(
         text="Задать вопрос AI-ассистенту", callback_data="ask"
     )
-
-    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2]])
-    await message.answer("Главное меню:", reply_markup=markup)
+    item3 = InlineKeyboardButton(
+        text="Получить шаблон документа", callback_data="doc_template"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3]])
+    await message.answer(welcome_text, reply_markup=markup)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("back_to_main"))
 async def back_to_main(callback_query: types.CallbackQuery):
-    await bot.answer_callback_query(callback_query.id)
     item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
     item2 = InlineKeyboardButton(
         text="Задать вопрос AI-ассистенту", callback_data="ask"
     )
-
-    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2]])
+    item3 = InlineKeyboardButton(
+        text="Получить шаблон документа", callback_data="doc_template"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3]])
     await bot.edit_message_text(
         "Главное меню:",
         chat_id=callback_query.from_user.id,
         message_id=callback_query.message.message_id,
+        reply_markup=markup,
+    )
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("resolved"))
+async def back_to_main(callback_query: types.CallbackQuery):
+    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
+    item2 = InlineKeyboardButton(
+        text="Задать вопрос AI-ассистенту", callback_data="ask"
+    )
+    item3 = InlineKeyboardButton(
+        text="Получить шаблон документа", callback_data="doc_template"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3]])
+    await bot.send_message(
+        text="Главное меню:",
+        chat_id=callback_query.from_user.id,
         reply_markup=markup,
     )
 
@@ -187,18 +209,32 @@ async def process_message(message: types.Message, state: FSMContext):
     message_count = user_data.get("message_count", 0) + 1
     await state.update_data({"message_count": message_count})
 
-    if message_count == 3:
+    if message_count == N_TRIES:
         item1 = InlineKeyboardButton(
-            text="Связь с оператором", callback_data="contact_operator"
+            text="Да, вернуться в меню", callback_data="back_to_main"
         )
-        markup = InlineKeyboardMarkup(inline_keyboard=[[item1]])
-        await message.answer("Хотите связаться с оператором?", reply_markup=markup)
+        item2 = InlineKeyboardButton(
+            text="Нет, свяжите меня с человеком", callback_data="contact_operator"
+        )
+
+        markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2]])
+        await message.answer(f"Ответ на вопрос: {message.text}.")
+        await message.answer(
+            "Я смогла ответить на ваш вопрос?",
+            reply_markup=markup,
+        )
         await state.update_data({"message_count": 0})
     else:
-        item1 = InlineKeyboardButton(text="Да, вопрос решен", callback_data="resolved")
+        item1 = InlineKeyboardButton(
+            text="Да, вернуться в меню", callback_data="back_to_main"
+        )
+
         markup = InlineKeyboardMarkup(inline_keyboard=[[item1]])
+        await message.answer(f"Ответ на вопрос: {message.text}")
+
         await message.answer(
-            f"Ответ на вопрос: {message.text}. Мы смогли ответить на ваш вопрос?",
+            f"Я смогла ответить на ваш вопрос?\n"
+            "Если нет, попробуйте уточнить или перефразировать вопрос",
             reply_markup=markup,
         )
 
