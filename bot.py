@@ -26,6 +26,20 @@ dp = Dispatcher()
 form_router = Router()
 dp.include_router(form_router)
 N_TRIES = 2
+import os
+
+
+def load_faq(directory="faq_answers"):
+    faq_answers = dict()
+    for path in os.listdir(directory):
+        theme = path.split(".")[0]
+        with open(os.path.join(directory, path), "r") as f:
+            faq_answers[theme] = f.read()
+
+    return faq_answers
+
+
+FAQ_ANSWERS = load_faq()
 
 
 async def on_startup(dp):
@@ -42,7 +56,7 @@ class UserState(StatesGroup):
 
 
 def get_main_menu_markup():
-    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
+    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="all_faq")
     item2 = InlineKeyboardButton(
         text="Задать вопрос AI-ассистенту", callback_data="ask"
     )
@@ -52,6 +66,19 @@ def get_main_menu_markup():
     item4 = InlineKeyboardButton(text="Найти коллегу", callback_data="search_colleague")
     markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3], [item4]])
     return markup
+
+
+def get_answer(question):
+    return """
+Выделяются следующие виды встреч:
+
+- Тактические встречи Круга;
+- Законодательные встречи Круга;
+- Целевые встречи;
+- Agile-встречи;
+- Корпоративные встречи;
+- Иные.
+"""
 
 
 def get_document_updates():
@@ -175,10 +202,13 @@ async def show_doc_template_menu(callback_query: types.CallbackQuery):
     item1 = InlineKeyboardButton(text="Отпуск", callback_data="doc_vacation")
     item2 = InlineKeyboardButton(text="Больничный", callback_data="doc_sick_leave")
     item3 = InlineKeyboardButton(text="Командировка", callback_data="doc_business_trip")
-    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3]])
-    await bot.send_message(
+    back = InlineKeyboardButton(text="Назад", callback_data="back_to_main")
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[[back], [item1], [item2], [item3]])
+    await bot.edit_message_text(
         text="Выберите тип документа:",
         chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
         reply_markup=markup,
     )
 
@@ -192,10 +222,10 @@ async def send_template_document(callback_query: types.CallbackQuery):
         document_path = "templates/vacation.doc"
         instruction = "Заполните этот шаблон для оформления отпуска."
     elif callback_data == "doc_sick_leave":
-        document_path = "templates/trip.doc"
+        document_path = "templates/sick_leave.doc"
         instruction = "Заполните этот шаблон для оформления больничного."
     elif callback_data == "doc_business_trip":
-        document_path = "templates/vacation.doc"
+        document_path = "templates/trip.doc"
         instruction = "Заполните этот шаблон для оформления командировки."
     else:
         return  # Неизвестное значение callback_data
@@ -203,12 +233,19 @@ async def send_template_document(callback_query: types.CallbackQuery):
         doc = URLInputFile(document_path)
     else:
         doc = FSInputFile(document_path)
-    await bot.edit_message_reply_markup(
-        chat_id, callback_query.message.message_id, reply_markup=None
-    )  # Удаляем inline клавиатуру
+    await bot.delete_message(
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+    )
     await bot.send_document(
         chat_id, document=doc, caption=instruction
     )  # Отправляем документ
+
+    await bot.send_message(
+        callback_query.from_user.id,
+        "Главное меню:",
+        reply_markup=get_main_menu_markup(),
+    )
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("back_to_main"))
@@ -222,12 +259,12 @@ async def back_to_main(callback_query: types.CallbackQuery):
     )
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("faq"))
+@dp.callback_query(lambda c: c.data and c.data.startswith("all_faq"))
 async def show_faq_menu(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    item1 = InlineKeyboardButton(text="Отпуск", callback_data="vacation")
-    item2 = InlineKeyboardButton(text="Больничный", callback_data="sick_leave")
-    item3 = InlineKeyboardButton(text="ЗП", callback_data="salary")
+    item1 = InlineKeyboardButton(text="Отпуск", callback_data="faq_vacation")
+    item2 = InlineKeyboardButton(text="Больничный", callback_data="faq_sick_leave")
+    item3 = InlineKeyboardButton(text="ЗП", callback_data="faq_salary")
     item_back = InlineKeyboardButton(text="Назад", callback_data="back_to_main")
     markup = InlineKeyboardMarkup(inline_keyboard=[[item_back, item1], [item2, item3]])
     await bot.edit_message_text(
@@ -239,19 +276,40 @@ async def show_faq_menu(callback_query: types.CallbackQuery):
 
 
 # пример обработки кнопки
-@dp.callback_query(lambda c: c.data and c.data.startswith("salary"))
+@dp.callback_query(lambda c: c.data and c.data.startswith("faq_salary"))
 async def process_callback_salary(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     await bot.answer_callback_query(callback_query.id)
     await state.update_data(message_count=0)
     await state.set_state(UserState.message_count)
-    await bot.edit_message_reply_markup(
+    await bot.delete_message(
         chat_id=callback_query.from_user.id,
         message_id=callback_query.message.message_id,
-        reply_markup=None,
     )
     await bot.send_message(callback_query.from_user.id, f"топ 5 вопросов-ответов")
+    await bot.send_message(
+        callback_query.from_user.id,
+        "Главное меню:",
+        reply_markup=get_main_menu_markup(),
+    )
+
+
+# пример обработки кнопки
+@dp.callback_query(lambda c: c.data and c.data.startswith("faq_vacation"))
+async def process_callback_salary(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
+    await bot.answer_callback_query(callback_query.id)
+    await state.update_data(message_count=0)
+    await state.set_state(UserState.message_count)
+    await bot.delete_message(
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+    )
+    await bot.send_message(
+        callback_query.from_user.id, FAQ_ANSWERS.get("vacation", "FAQ пуст")
+    )
     await bot.send_message(
         callback_query.from_user.id,
         "Главное меню:",
@@ -274,7 +332,8 @@ async def process_message(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     message_count = user_data.get("message_count", 0) + 1
     await state.update_data({"message_count": message_count})
-
+    question = message.text
+    answer = get_answer(question)
     if message_count == N_TRIES:
         item1 = InlineKeyboardButton(
             text="Да, вернуться в меню", callback_data="back_to_main"
@@ -284,7 +343,7 @@ async def process_message(message: types.Message, state: FSMContext):
         )
 
         markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2]])
-        await message.answer(f"Ответ на вопрос: {message.text}.")
+        await message.answer(f"Ответ на вопрос: {answer}.")
         await message.answer(
             "Я смогла ответить на ваш вопрос?",
             reply_markup=markup,
