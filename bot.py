@@ -8,7 +8,14 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, PollAnswer
+from aiogram.types import (
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputFile,
+    PollAnswer,
+    URLInputFile,
+)
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +38,20 @@ class UserState(StatesGroup):
     main_menu = State()
     faq_menu = State()
     message_count = State()
+    search_colleague = State()
+
+
+def get_main_menu_markup():
+    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
+    item2 = InlineKeyboardButton(
+        text="Задать вопрос AI-ассистенту", callback_data="ask"
+    )
+    item3 = InlineKeyboardButton(
+        text="Получить шаблон документа", callback_data="doc_template"
+    )
+    item4 = InlineKeyboardButton(text="Найти коллегу", callback_data="search_colleague")
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3], [item4]])
+    return markup
 
 
 def get_document_updates():
@@ -46,7 +67,7 @@ def get_all_users():
 
 
 def get_contact_info(query):
-    return ""
+    return "Почта: ivan_ivanov@smart.ru"
 
 
 def time_until_next_week():
@@ -88,13 +109,37 @@ async def check_document_updates():
                 await bot.send_message(user_id, message_text)
         await asyncio.sleep(3600 * 8)  # Проверяйте обновления каждый день
 
+    search_colleague = State()  # добавьте это состояние
 
-# Поиск коллег
-@dp.message(Command("search"))
-async def search_colleague(message: types.Message):
-    query = message.get_args()
+
+@form_router.callback_query(lambda c: c.data and c.data.startswith("search_colleague"))
+async def request_colleague_name(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
+    await bot.answer_callback_query(callback_query.id)
+    await state.set_state(UserState.search_colleague)
+
+    item_back = InlineKeyboardButton(text="Назад", callback_data="back_to_main")
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item_back]])
+
+    await bot.edit_message_text(
+        "Введите ФИО:",
+        callback_query.from_user.id,
+        callback_query.message.message_id,
+        reply_markup=markup,
+    )
+
+
+@form_router.message(UserState.search_colleague)
+async def search_colleague(message: types.Message, state: FSMContext):
+    query = message.text
     contact_info = get_contact_info(query)
-    await message.reply(contact_info)
+    await state.clear()
+    await message.reply(
+        contact_info,
+        reply_markup=None,  # Это уберет кнопку "Назад" после того, как пользователь введет ФИО
+    )
+    await message.answer("Главное меню: ", reply_markup=get_main_menu_markup())
 
 
 async def weekly_survey():
@@ -120,48 +165,59 @@ async def birthday_greetings():
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
     welcome_text = "Главное меню: "
-    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
-    item2 = InlineKeyboardButton(
-        text="Задать вопрос AI-ассистенту", callback_data="ask"
-    )
-    item3 = InlineKeyboardButton(
-        text="Получить шаблон документа", callback_data="doc_template"
-    )
-    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3]])
+    markup = get_main_menu_markup()
     await message.answer(welcome_text, reply_markup=markup)
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("back_to_main"))
-async def back_to_main(callback_query: types.CallbackQuery):
-    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
-    item2 = InlineKeyboardButton(
-        text="Задать вопрос AI-ассистенту", callback_data="ask"
-    )
-    item3 = InlineKeyboardButton(
-        text="Получить шаблон документа", callback_data="doc_template"
-    )
+### Шаблон документа PDF ###
+@dp.callback_query(lambda c: c.data and c.data.startswith("doc_template"))
+async def show_doc_template_menu(callback_query: types.CallbackQuery):
+    item1 = InlineKeyboardButton(text="Отпуск", callback_data="doc_vacation")
+    item2 = InlineKeyboardButton(text="Больничный", callback_data="doc_sick_leave")
+    item3 = InlineKeyboardButton(text="Командировка", callback_data="doc_business_trip")
     markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3]])
-    await bot.edit_message_text(
-        "Главное меню:",
+    await bot.send_message(
+        text="Выберите тип документа:",
         chat_id=callback_query.from_user.id,
-        message_id=callback_query.message.message_id,
         reply_markup=markup,
     )
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("resolved"))
+@dp.callback_query(lambda c: c.data and c.data.startswith("doc_"))
+async def send_template_document(callback_query: types.CallbackQuery):
+    chat_id = callback_query.from_user.id
+    callback_data = callback_query.data
+
+    if callback_data == "doc_vacation":
+        document_path = "templates/vacation.doc"
+        instruction = "Заполните этот шаблон для оформления отпуска."
+    elif callback_data == "doc_sick_leave":
+        document_path = "templates/trip.doc"
+        instruction = "Заполните этот шаблон для оформления больничного."
+    elif callback_data == "doc_business_trip":
+        document_path = "templates/vacation.doc"
+        instruction = "Заполните этот шаблон для оформления командировки."
+    else:
+        return  # Неизвестное значение callback_data
+    if document_path.startswith("http"):  # может быть ссылка на файл
+        doc = URLInputFile(document_path)
+    else:
+        doc = FSInputFile(document_path)
+    await bot.edit_message_reply_markup(
+        chat_id, callback_query.message.message_id, reply_markup=None
+    )  # Удаляем inline клавиатуру
+    await bot.send_document(
+        chat_id, document=doc, caption=instruction
+    )  # Отправляем документ
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("back_to_main"))
 async def back_to_main(callback_query: types.CallbackQuery):
-    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="faq")
-    item2 = InlineKeyboardButton(
-        text="Задать вопрос AI-ассистенту", callback_data="ask"
-    )
-    item3 = InlineKeyboardButton(
-        text="Получить шаблон документа", callback_data="doc_template"
-    )
-    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3]])
-    await bot.send_message(
-        text="Главное меню:",
+    markup = get_main_menu_markup()
+    await bot.edit_message_text(
+        "Главное меню:",
         chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
         reply_markup=markup,
     )
 
