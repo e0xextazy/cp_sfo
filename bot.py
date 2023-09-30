@@ -82,7 +82,9 @@ def get_main_menu_markup():
     return markup
 
 
-def get_answer(question):
+### здесь модель работает
+### chat id для поиска истории запросов через DB API (можно просто сделать вид)
+def get_answer(chat_id, question):
     return """
 Выделяются следующие виды встреч:
 
@@ -101,10 +103,6 @@ def get_contact_info(query):
 
 def time_until_next_week():
     return 3600 * 7
-
-
-def get_today_birthdays():
-    return []
 
 
 # Предположим, что у вас есть функция save_poll_answer для сохранения ответов на опросы в базе данных
@@ -264,46 +262,43 @@ async def show_faq_menu(callback_query: types.CallbackQuery):
     )
 
 
-# пример обработки кнопки
+async def answer_faq(callback_query: types.CallbackQuery, state: FSMContext, type: str):
+    await bot.answer_callback_query(callback_query.id)
+    await state.update_data(message_count=0)
+    await state.set_state(UserState.message_count)
+    await bot.delete_message(
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+    )
+    await bot.send_message(
+        callback_query.from_user.id, FAQ_ANSWERS.get(type, "FAQ пуст")
+    )
+    await bot.send_message(
+        callback_query.from_user.id,
+        "Главное меню:",
+        reply_markup=get_main_menu_markup(),
+    )
+
+
 @dp.callback_query(lambda c: c.data and c.data.startswith("faq_salary"))
 async def process_callback_salary(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
-    await bot.answer_callback_query(callback_query.id)
-    await state.update_data(message_count=0)
-    await state.set_state(UserState.message_count)
-    await bot.delete_message(
-        chat_id=callback_query.from_user.id,
-        message_id=callback_query.message.message_id,
-    )
-    await bot.send_message(callback_query.from_user.id, f"топ 5 вопросов-ответов")
-    await bot.send_message(
-        callback_query.from_user.id,
-        "Главное меню:",
-        reply_markup=get_main_menu_markup(),
-    )
+    await answer_faq(callback_query, state, "salary")
 
 
-# пример обработки кнопки
 @dp.callback_query(lambda c: c.data and c.data.startswith("faq_vacation"))
 async def process_callback_salary(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
-    await bot.answer_callback_query(callback_query.id)
-    await state.update_data(message_count=0)
-    await state.set_state(UserState.message_count)
-    await bot.delete_message(
-        chat_id=callback_query.from_user.id,
-        message_id=callback_query.message.message_id,
-    )
-    await bot.send_message(
-        callback_query.from_user.id, FAQ_ANSWERS.get("vacation", "FAQ пуст")
-    )
-    await bot.send_message(
-        callback_query.from_user.id,
-        "Главное меню:",
-        reply_markup=get_main_menu_markup(),
-    )
+    await answer_faq(callback_query, state, "vacation")
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("faq_sick_leave"))
+async def process_callback_salary(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
+    await answer_faq(callback_query, state, "sick_leave")
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("ask"))
@@ -321,10 +316,12 @@ async def process_message(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     message_count = user_data.get("message_count", 0) + 1
     await state.update_data({"message_count": message_count})
+
+    chat_id = message.chat.id
     question = message.text
-    await save_message_database(message.chat.id, "q", question)
-    answer = get_answer(question)
-    await save_message_database(message.chat.id, "a", answer)
+    await save_message_database(chat_id, "q", question)
+    answer = get_answer(chat_id, question)
+    await save_message_database(chat_id, "a", answer)
 
     if message_count == N_TRIES:
         item1 = InlineKeyboardButton(
