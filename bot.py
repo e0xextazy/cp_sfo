@@ -355,7 +355,7 @@ async def process_message(message: types.Message, state: FSMContext):
         )
 
         markup = InlineKeyboardMarkup(inline_keyboard=[[item1]])
-        await message.answer(f"Ответ на вопрос: {message.text}")
+        await message.answer(f"Ответ на вопрос: {answer}")
 
         await message.answer(
             f"Я смогла ответить на ваш вопрос?\n"
