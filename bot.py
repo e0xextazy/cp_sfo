@@ -246,7 +246,17 @@ async def process_callback_salary(
     await bot.answer_callback_query(callback_query.id)
     await state.update_data(message_count=0)
     await state.set_state(UserState.message_count)
+    await bot.edit_message_reply_markup(
+        chat_id=callback_query.from_user.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=None,
+    )
     await bot.send_message(callback_query.from_user.id, f"топ 5 вопросов-ответов")
+    await bot.send_message(
+        callback_query.from_user.id,
+        "Главное меню:",
+        reply_markup=get_main_menu_markup(),
+    )
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("ask"))
