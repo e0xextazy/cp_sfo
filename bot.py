@@ -34,12 +34,10 @@ import os
 
 
 async def save_message_database(chat_id, type, text):
-    # Формирование данных для отправки
     data = {"chat_id": chat_id, "message": {"type": type, "text": text}}
 
     async with httpx.AsyncClient() as client:
         response = await client.post(BD_API, json=data)
-
         if response.status_code == 200:
             logger.info("Message saved successfully")
         else:
