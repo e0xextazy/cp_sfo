@@ -48,7 +48,7 @@ def load_faq(directory="faq_answers"):
     faq_answers = dict()
     for path in os.listdir(directory):
         theme = path.split(".")[0]
-        with open(os.path.join(directory, path), "r") as f:
+        with open(os.path.join(directory, path), "r", encoding='UTF8') as f:
             faq_answers[theme] = f.read()
 
     return faq_answers
@@ -67,18 +67,23 @@ class UserState(StatesGroup):
     faq_menu = State()
     message_count = State()
     search_colleague = State()
+    wait_course_description = State()
 
 
 def get_main_menu_markup():
-    item1 = InlineKeyboardButton(text="Ответы на FAQ", callback_data="all_faq")
+    item1 = InlineKeyboardButton(text="❓ FAQ", callback_data="all_faq")
     item2 = InlineKeyboardButton(
-        text="Задать вопрос AI-ассистенту", callback_data="ask"
+        text="👱‍♀️ Задать вопрос AI-ассистенту 👱‍♀️", callback_data="ask"
     )
     item3 = InlineKeyboardButton(
-        text="Получить шаблон документа", callback_data="doc_template"
+        text="📁 Получить шаблон документа 📁", callback_data="doc_template"
     )
-    item4 = InlineKeyboardButton(text="Найти коллегу", callback_data="search_colleague")
-    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3], [item4]])
+    item4 = InlineKeyboardButton(text="🔎 Найти коллегу", callback_data="search_colleague")
+    item6 = InlineKeyboardButton(text="👨‍🎓 Найти корпоративный курс", callback_data="search_course")
+
+    item5 = InlineKeyboardButton(text="Как пользоваться ботом?", callback_data="None", url="https://emojio.ru/symbols/d83ddd19-1f519-strelka-nazad.html")
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item1, item4], [item3], [item6], [item2], [item5]])
     return markup
 
 
@@ -122,6 +127,53 @@ async def handle_poll_answer(poll_answer: PollAnswer):
     save_poll_answer(user_id, poll_id, option_ids)
 
 
+@form_router.callback_query(lambda c: c.data and c.data.startswith("search_course"))
+async def request_colleague_name(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
+    await bot.answer_callback_query(callback_query.id)
+    await state.set_state(UserState.wait_course_description)
+
+    item_back = InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item_back]])
+    
+    text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+           f"\n\nОпишите, какой навык Вам хотелось бы получить? Какой Ваш текущий уровень знаний в этом вопросе?"
+    
+    await bot.edit_message_text(
+        text,
+        callback_query.from_user.id,
+        callback_query.message.message_id,
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
+
+
+
+@form_router.message(UserState.wait_course_description)
+async def search_colleague(message: types.Message, state: FSMContext):
+    query = message.text
+    # contact_info = get_contact_info(query)
+    course_info = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+                   f"\n\n<b>Результат поиска:</b>"\
+                   f'\n1. <a href="https://stepik.org/course/401/promo">Нейронные сети</a>'\
+                   f'\n2. <a href="https://stepik.org/course/50352/info">Нейронные сети и компьютерное зрение</a>'\
+                   f'\n3. <a href="https://stepik.org/course/67/promo">Программирование на Python</a>'\
+                   
+    await state.clear()
+    await message.reply(
+        course_info,
+        reply_markup=None,  # Это уберет кнопку "Назад" после того, как пользователь введет ФИО
+        parse_mode="HTML"
+    )
+    text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+           f"\n\n<b>Имя:</b> {message.from_user.first_name}"\
+           f"\n<b>Следующая ЗП:</b> 01.10.2023"\
+           f"\n<b>Дней отпуска:</b> 15"\
+           f"\n\nДля начала пработы, просто <u>нажми на кнопку</u>  интересующего раздела."
+    await message.answer(text=text, reply_markup=get_main_menu_markup(), parse_mode="HTML")
+
+
 # обновления документов
 # не запускается без бэка
 async def check_document_updates():
@@ -144,27 +196,42 @@ async def request_colleague_name(
     await bot.answer_callback_query(callback_query.id)
     await state.set_state(UserState.search_colleague)
 
-    item_back = InlineKeyboardButton(text="Назад", callback_data="back_to_main")
+    item_back = InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")
     markup = InlineKeyboardMarkup(inline_keyboard=[[item_back]])
-
+    
+    text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+           f"\n\nВведите <u>ФИО</u> коллеги для поиска"
+    
     await bot.edit_message_text(
-        "Введите ФИО:",
+        text,
         callback_query.from_user.id,
         callback_query.message.message_id,
         reply_markup=markup,
+        parse_mode="HTML"
     )
 
 
 @form_router.message(UserState.search_colleague)
 async def search_colleague(message: types.Message, state: FSMContext):
     query = message.text
-    contact_info = get_contact_info(query)
+    # contact_info = get_contact_info(query)
+    contact_info = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+                   f"\n\n<b>Результат поиска:</b>"\
+                   f"\n<b>ФИО</b>: {query}"\
+                   f"\n<b>Почта</b>: cf_pror@mail.ru"\
+                   f"\n<b>Часы работы</b>: 10:00-17:00"
     await state.clear()
     await message.reply(
         contact_info,
         reply_markup=None,  # Это уберет кнопку "Назад" после того, как пользователь введет ФИО
+        parse_mode="HTML"
     )
-    await message.answer("Главное меню: ", reply_markup=get_main_menu_markup())
+    text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+           f"\n\n<b>Имя:</b> {message.from_user.first_name}"\
+           f"\n<b>Следующая ЗП:</b> 01.10.2023"\
+           f"\n<b>Дней отпуска:</b> 15"\
+           f"\n\nДля начала пработы, просто <u>нажми на кнопку</u>  интересующего раздела."
+    await message.answer(text=text, reply_markup=get_main_menu_markup(), parse_mode="HTML")
 
 
 async def weekly_survey():
@@ -178,25 +245,34 @@ async def weekly_survey():
 
 @dp.message(Command("start"))
 async def send_welcome(message: types.Message):
-    welcome_text = "Главное меню: "
+    welcome_text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+                   f"\n\n<b>Имя:</b> {message.from_user.first_name}"\
+                   f"\n<b>Следующая ЗП:</b> 01.10.2023"\
+                   f"\n<b>Дней отпуска:</b> 15"\
+                   f"\n\nДля начала пработы, просто <u>нажми на кнопку</u>  интересующего раздела."
     markup = get_main_menu_markup()
-    await message.answer(welcome_text, reply_markup=markup)
+    await message.answer(welcome_text, reply_markup=markup, parse_mode="HTML")
 
 
 ### Шаблон документа PDF ###
 @dp.callback_query(lambda c: c.data and c.data.startswith("doc_template"))
 async def show_doc_template_menu(callback_query: types.CallbackQuery):
-    item1 = InlineKeyboardButton(text="Отпуск", callback_data="doc_vacation")
-    item2 = InlineKeyboardButton(text="Больничный", callback_data="doc_sick_leave")
-    item3 = InlineKeyboardButton(text="Командировка", callback_data="doc_business_trip")
-    back = InlineKeyboardButton(text="Назад", callback_data="back_to_main")
+    item1 = InlineKeyboardButton(text="🏖️ Отпуск", callback_data="doc_vacation")
+    item2 = InlineKeyboardButton(text="👨‍⚕️ Больничный", callback_data="doc_sick_leave")
+    item3 = InlineKeyboardButton(text="🛫 Командировка", callback_data="doc_business_trip")
+    back = InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")
 
-    markup = InlineKeyboardMarkup(inline_keyboard=[[back], [item1], [item2], [item3]])
+    markup = InlineKeyboardMarkup(inline_keyboard=[[item1], [item2], [item3], [back]])
+
+    text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+           f"\n\nВыберите интересующий документ"
+
     await bot.edit_message_text(
-        text="Выберите тип документа:",
+        text=text,
         chat_id=callback_query.from_user.id,
         message_id=callback_query.message.message_id,
         reply_markup=markup,
+        parse_mode="HTML"
     )
 
 
@@ -204,16 +280,16 @@ async def show_doc_template_menu(callback_query: types.CallbackQuery):
 async def send_template_document(callback_query: types.CallbackQuery):
     chat_id = callback_query.from_user.id
     callback_data = callback_query.data
-
+    text = f"👱‍♀️ <b><u>Хьюстон</u></b>\n\n"
     if callback_data == "doc_vacation":
         document_path = "templates/vacation.doc"
-        instruction = "Заполните этот шаблон для оформления отпуска."
+        instruction = "Заполните этот шаблон для оформления <u>отпуска</u>."
     elif callback_data == "doc_sick_leave":
         document_path = "templates/sick_leave.doc"
-        instruction = "Заполните этот шаблон для оформления больничного."
+        instruction = "Заполните этот шаблон для оформления <u>больничного</u>."
     elif callback_data == "doc_business_trip":
         document_path = "templates/trip.doc"
-        instruction = "Заполните этот шаблон для оформления командировки."
+        instruction = "Заполните этот шаблон для оформления <u>командировки</u>."
     else:
         return  # Неизвестное значение callback_data
     if document_path.startswith("http"):  # может быть ссылка на файл
@@ -225,13 +301,18 @@ async def send_template_document(callback_query: types.CallbackQuery):
         message_id=callback_query.message.message_id,
     )
     await bot.send_document(
-        chat_id, document=doc, caption=instruction
+        chat_id, document=doc, caption=text+instruction, parse_mode="HTML"
     )  # Отправляем документ
-
+    main_menu_text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+           f"\n\n<b>Имя:</b> {callback_query.from_user.first_name}"\
+           f"\n<b>Следующая ЗП:</b> 01.10.2023"\
+           f"\n<b>Дней отпуска:</b> 15"\
+           f"\n\nДля начала пработы, просто <u>нажми на кнопку</u>  интересующего раздела."
     await bot.send_message(
         callback_query.from_user.id,
-        "Главное меню:",
+        text=main_menu_text,
         reply_markup=get_main_menu_markup(),
+        parse_mode="HTML"
     )
 
 
@@ -249,16 +330,30 @@ async def back_to_main(callback_query: types.CallbackQuery):
 @dp.callback_query(lambda c: c.data and c.data.startswith("all_faq"))
 async def show_faq_menu(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
-    item1 = InlineKeyboardButton(text="Отпуск", callback_data="faq_vacation")
-    item2 = InlineKeyboardButton(text="Больничный", callback_data="faq_sick_leave")
-    item3 = InlineKeyboardButton(text="ЗП", callback_data="faq_salary")
-    item_back = InlineKeyboardButton(text="Назад", callback_data="back_to_main")
-    markup = InlineKeyboardMarkup(inline_keyboard=[[item_back, item1], [item2, item3]])
+
+    item1 = InlineKeyboardButton(text="🏖️ Отпуск", callback_data="faq_vacation")
+    item3 = InlineKeyboardButton(text="💰 ЗП", callback_data="faq_salary")
+    item4 = InlineKeyboardButton(text="👨‍⚕️ ДМС", callback_data="faq_sick_leave")
+    
+    item_back = InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")
+
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+                [item3, item4],
+                [item1],
+                [item_back]
+            ]
+        )
+
+    text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+           f"\n\nВыбирите интересующую тему"
+    
     await bot.edit_message_text(
-        "Выберите интересующую тему:",
+        text=text,
         chat_id=callback_query.from_user.id,
         message_id=callback_query.message.message_id,
         reply_markup=markup,
+        parse_mode="HTML"
     )
 
 
@@ -269,6 +364,13 @@ async def answer_faq(callback_query: types.CallbackQuery, state: FSMContext, typ
     await bot.delete_message(
         chat_id=callback_query.from_user.id,
         message_id=callback_query.message.message_id,
+    )
+    text = text = f"👱‍♀️ <b><u>Хьюстон</u></b>"\
+           f"\n\nЗдесь собраны наиболее популярные вопросы по выбранной категории."
+    await bot.send_message(
+        text=text,
+        parse_mode="HTML",
+        chat_id=callback_query.from_user.id
     )
     await bot.send_message(
         callback_query.from_user.id, FAQ_ANSWERS.get(type, "FAQ пуст")
