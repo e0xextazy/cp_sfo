@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import json
 
 import httpx
 import requests
@@ -81,7 +82,7 @@ def get_main_menu_markup():
     item4 = InlineKeyboardButton(text="🔎 Найти коллегу", callback_data="search_colleague")
     item6 = InlineKeyboardButton(text="👨‍🎓 Найти корпоративный курс", callback_data="search_course")
 
-    item5 = InlineKeyboardButton(text="Как пользоваться ботом?", callback_data="None", url="https://emojio.ru/symbols/d83ddd19-1f519-strelka-nazad.html")
+    item5 = InlineKeyboardButton(text="Как пользоваться ботом?", callback_data="None", url="https://youtu.be/5ZBoqkwkMAo")
 
     markup = InlineKeyboardMarkup(inline_keyboard=[[item1, item4], [item3], [item6], [item2], [item5]])
     return markup
@@ -90,16 +91,11 @@ def get_main_menu_markup():
 ### здесь модель работает
 ### chat id для поиска истории запросов через DB API (можно просто сделать вид)
 def get_answer(chat_id, question):
-    return """
-Выделяются следующие виды встреч:
-
-- Тактические встречи Круга;
-- Законодательные встречи Круга;
-- Целевые встречи;
-- Agile-встречи;
-- Корпоративные встречи;
-- Иные.
-"""
+    # json.loads(r2.text) -> {'response': '60% среднего заработка, если страховой стаж от 6 месяцев до 5 лет; 80% от 5 до 8 лет; 100% более 8 лет.'}
+    resp = requests.post("https://9fa3-62-217-190-168.ngrok.io/get_answer",
+                        data=json.dumps({"query": question}))
+    resp = json.loads(resp.text)['response']
+    return resp
 
 
 def get_contact_info(query):
